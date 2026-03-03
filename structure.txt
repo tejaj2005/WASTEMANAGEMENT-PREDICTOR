@@ -1,633 +1,158 @@
 ================================================================================
-    INTELLIGENT WASTE SEGREGATION SYSTEM - COMPLETE ARCHITECTURE
+        INTELLIGENT WASTE SEGREGATION SYSTEM — ARCHITECTURE v2.1
 ================================================================================
 
-PROJECT INFO
------------
-Name:       Intelligent Waste Segregation System
-Version:    2.0
-Status:     Production Ready ✅
-Release:    February 2026
-Repository: https://github.com/boss4848/waste-detection
-Live Demo:  https://intelligent-waste-segregation-system.streamlit.app
-
-Description:
-  AI-powered real-time waste detection & segregation using YOLOv11 
-  (92% mAP50) for object detection and Google Gemini 2.0 Flash AI 
-  for intelligent recycling recommendations.
-  
-  • Detects 40+ waste types with 90%+ accuracy
-  • Classifies into 3 categories: Recyclable | Non-Recyclable | Hazardous
-  • Provides material-specific recycling guidance via Gemini AI
-  • Runs at 30 FPS on GPU, 10 FPS on CPU
-  • Fully logged with analytics dashboard
+PROJECT
+-------
+  Name:       Intelligent Waste Segregation System
+  Repository: https://github.com/tejaj2005/WASTEMANAGEMENT-PREDICTOR
+  Stack:      YOLO11 · PyTorch · Streamlit · Gemini 2.0 Flash
+  Status:     Production Ready ✅
 
 
-SYSTEM DATA FLOW ARCHITECTURE
------------------------------
+DATA FLOW
+---------
 
-[ENTRY POINT]
-     |
-     v
-  WEBCAM (1280x720 @ 30 FPS)
-     |
-     +---> (OpenCV) Preprocessing
-             |
-             v
-          Resize to 640x480 (YOLOv11 input size)
-          Normalize pixel values (0-1 range)
-             |
-     +-------v-------+
-     |               |
-[YOLOv11 DETECTION ENGINE]
-     |
-     +---> Backbone (CSPDarknet)
-     |       Feature extraction at multiple scales
-     |       • Layer 1: 640→320 (large objects)
-     |       • Layer 2: 320→160 (medium objects)
-     |       • Layer 3: 160→80  (small objects)
-     |
-     +---> Neck (PANet/PAFPN)
-     |       Multi-scale feature fusion
-     |       Parallel augmented feature pyramid
-     |
-     +---> Detection Head (3 scales)
-             • Class predictions (40+ waste types)
-             • Bounding box coordinates (x, y, w, h)
-             • Confidence scores (0-1)
-     |
-     v
-[POST-PROCESSING]
-   • Sigmoid activation (logits→probability)
-   • Filter by confidence threshold (default 0.4)
-   • Non-Maximum Suppression (remove duplicates, IOU=0.45)
-     |
-     v
-[CLASSIFICATION ENGINE]
-   Maps detected items to 3 waste categories using settings.py:
-     ♻️  RECYCLABLE (13 types): bottles, cans, cardboard, paper, etc.
-     ⚠️  NON-RECYCLABLE (17 types): bags, foam, tissue, napkins, etc.
-     🚨 HAZARDOUS (10 types): batteries, chemicals, bulbs, etc.
-     |
-     v
-[QUALITY ASSESSMENT]
-   Score based on detection confidence:
-     🟢 Excellent (≥85%):  High confidence, reliable detection
-     🟡 Good (70-85%):     Normal quality detection
-     🟠 Fair (50-70%):     Lower confidence, review recommended
-     🔴 Poor (<50%):       Very low confidence, may be incorrect
-     |
-     v
-[GEMINI 2.0 FLASH AI ANALYSIS]
-   Comprehensive waste analysis including:
-     1. Item-by-item material composition breakdown
-     2. Material-specific recycling methods & processes
-     3. Proper disposal for non-recyclable items
-     4. Safety warnings & hazard handling protocols
-     5. Creative reuse & upcycling suggestions
-     6. Environmental impact & carbon footprint analysis
-     7. Actionable timeline & next steps
-     |
-     v
-[LOGGING SYSTEM]
-   • JSON: detection_logs.json (complete session data)
-   • CSV:  detection_stats.csv (aggregated statistics)
-     |
-     v
-[STREAMLIT UI RENDERING]
-   • Annotated video frame with bounding boxes
-   • Category-wise detection breakdown
-   • Quality tier indicators
-   • Gemini AI recommendations
-   • Analytics dashboard & history
+  Webcam (1280×720 @ 30 fps)
+       │
+       ▼
+  OpenCV resize → 640×480
+       │
+       ▼
+  ┌─────────────────────────────────┐
+  │  YOLO11 Detection Engine        │
+  │  ├─ Backbone: CSPDarknet        │
+  │  ├─ Neck:     PAFPN             │
+  │  └─ Head:     3-scale output    │
+  └─────────────┬───────────────────┘
+                │
+                ▼
+  Post-processing
+    • Confidence filter (≥ 0.4)
+    • NMS (IoU = 0.45)
+                │
+                ▼
+  Classification → Recyclable | Non-Recyclable | Hazardous
+                │
+                ▼
+  Quality tier  → 🟢 Excellent | 🟡 Good | 🟠 Fair | 🔴 Poor
+                │
+                ▼
+  Gemini 2.0 Flash AI analysis
+    • Item-by-item recycling guidance
+    • Hazard warnings & safety
+    • Environmental impact
+                │
+                ▼
+  Logging
+    • detection_logs.json (sessions)
+    • detection_stats.csv  (items)
+                │
+                ▼
+  Streamlit UI rendering
 
 
-YOLOV11 OBJECT DETECTION MODEL
-------------------------------
+MODEL VARIANTS
+--------------
 
-Model Architecture:
-  YOLOv11 = CSPDarknet Backbone + PANet Neck + Detection Head
-  
-  Backbone (CSPDarknet):
-    - Input: 640x640x3 (RGB image)
-    - Layer 1: 640→320 (stem conv + 6 bottlenecks)
-    - Layer 2: 320→160 (6 partial bottlenecks)
-    - Layer 3: 160→80  (9 partial bottlenecks)
-    - Output: Multi-scale feature maps (80x80, 40x40, 20x20)
-  
-  Neck (PANet/PAFPN):
-    - Combines features across scales
-    - Top-down path: High→Low resolution fusion
-    - Bottom-up path: Low→High resolution augmentation
-    - Output: Enhanced feature pyramid with 3 levels
-  
-  Detection Head:
-    - Scale 1 (80x80): Detects small objects
-    - Scale 2 (40x40): Detects medium objects
-    - Scale 3 (20x20): Detects large objects
-    - Per-location output: 80 channels
-      • 40 class probabilities (waste types)
-      • 4 bounding box coordinates + 1 objectness
-      • 35 DFL (Distribution Focal Loss) channels
-    - Total output: 80x80x80 + 40x40x80 + 20x20x80 predictions
+  Variant    Params    Size     GPU Speed    mAP50    Use-case
+  ──────────────────────────────────────────────────────────────
+  Nano       2.6 M     6 MB    5–8 ms       88 %     Edge / mobile
+  Small      9.6 M    25 MB   10–12 ms      90 %     Balanced ⭐
+  Medium    20.1 M    51 MB   15–18 ms      92 %     High accuracy
 
-Model Variants Available:
-  
-  Nano (yolov11n.pt):
-    Parameters: 2.6 Million
-    Size: 6 MB
-    Input: 640x640
-    Inference (GPU): 5-8 ms
-    Inference (CPU): 50 ms
-    mAP50: 88%
-    FPS (GPU): 40-50 fps
-    Use Case: Edge devices, real-time speed priority
-  
-  Small (yolov11s.pt) - DEFAULT SELECTED:
-    Parameters: 9.6 Million
-    Size: 25 MB
-    Input: 640x640
-    Inference (GPU): 10-12 ms
-    Inference (CPU): 100 ms
-    mAP50: 90%
-    FPS (GPU): 30-40 fps
-    Use Case: Balanced speed and accuracy (RECOMMENDED)
-  
-  Medium (yolov11m.pt):
-    Parameters: 20.1 Million
-    Size: 51 MB
-    Input: 640x640
-    Inference (GPU): 15-18 ms
-    Inference (CPU): 150 ms
-    mAP50: 92%
-    FPS (GPU): 20-30 fps
-    Use Case: Maximum accuracy required
-
-Training Configuration (best.pt):
-  Base Model: YOLOv11n (Nano)
-  Dataset: Roboflow Waste Detection v9 (2,500 images)
-  Epochs: 50
-  Batch Size: 16
-  Learning Rate: 0.001 (initial), cosine annealing
-  Optimizer: SGD with momentum 0.937, weight decay 0.0005
-  Loss Function: YOLOv11 combined loss
-    • Box Loss (GIoU): ~0.5 weight
-    • Class Loss (CE): ~0.5 weight
-    • DFL Loss: distribution focal loss
-  Augmentation: Mosaic, rotation, brightness, exposure, blur, HSV
-  Hardware: Google Colab Tesla T4 GPU (12GB VRAM)
-  Training Time: ~4-6 hours per epoch
-  Final Performance:
-    • mAP50: 92%
-    • mAP50-95: 78%
-    • Precision: 90%
-    • Recall: 88%
-    • F1-Score: 0.89
-
-GPU Optimization Techniques:
-  1. Half Precision (FP16):
-     - Uses 16-bit floating point instead of 32-bit
-     - Reduces memory usage by 50%
-     - Speeds up inference by 2x on NVIDIA CUDA GPUs
-     - Minimal accuracy loss
-  
-  2. CUDA Streams:
-     - Parallel execution of multiple GPU operations
-     - Overlaps data transfer and computation
-     - Improves throughput
-  
-  3. Batch Processing:
-     - Process multiple frames together
-     - Better GPU utilization
-     - Reduces overhead per frame
-  
-  4. Auto Device Detection:
-     - Automatically uses GPU if torch.cuda.is_available()
-     - Falls back to CPU if CUDA not available
-     - Transparent to user
+  Custom (best.pt) — fine-tuned on Roboflow Waste Detection v9
+    Epochs: 50  ·  Batch: 16  ·  LR: 0.001 (cosine)
+    mAP50: 92 %  ·  Precision: 90 %  ·  Recall: 88 %
 
 
-GOOGLE GEMINI 2.0 FLASH AI INTEGRATION
---------------------------------------
+FILE STRUCTURE
+--------------
 
-API Configuration:
-  Provider: Google AI Studio
-  API Key: Loaded from .env file (GEMINI_API_KEY environment variable)
-  Model: gemini-2.0-flash
-  Features: Multi-modal, cost-effective, fast inference
-  Integration: Built into helper.py get_recycling_suggestions()
+  app.py            Streamlit UI — model selection, sidebar, dashboard
+  helper.py         Detection engine — YOLO inference, Gemini AI, logging
+  settings.py       Configuration — paths, API keys, waste categories
 
-Waste Analysis Framework (7 Points):
+  .env.example      API key template (tracked)
+  .env              Your API keys (gitignored)
+  requirements.txt  Python dependencies
+  packages.txt      System packages (Streamlit Cloud)
 
-  1. ITEM-BY-ITEM ANALYSIS
-     For each detected waste item:
-     • Material composition (PET, Aluminum, Glass, etc.)
-     • Current condition assessment (new, used, damaged)
-     • Reusability potential (Yes/No/Partial)
-     • Quality indicators from detection confidence
-  
-  2. RECYCLING METHODS (Recyclable Items Only)
-     Material-specific process details:
-     • Preparation steps (cleaning, disassembly)
-     • Where to take (recycling center, curbside, drop-off)
-     • Processing timeline (1 week to several months)
-     • New products created from recycled material
-  
-  3. DISPOSAL GUIDANCE (Non-Recyclable Items)
-     • Safe disposal methods (landfill, incineration, etc.)
-     • Local waste management options
-     • Environmental considerations
-     • Why it's classified as non-recyclable
-     • Possible future recycling advances
-  
-  4. HAZARDOUS MATERIAL SAFETY ⚠️
-     Critical information for dangerous items:
-     • Safety warnings and precautions
-     • Required Personal Protective Equipment (PPE)
-     • Proper handling procedures
-     • Storage and transportation requirements
-     • Certified disposal facility locations
-     • Environmental contamination risks
-     • Legal regulations and compliance
-  
-  5. CREATIVE REUSE SUGGESTIONS
-     Extend item lifecycle:
-     • Upcycling project DIY ideas
-     • Donation opportunities and programs
-     • Second-hand/resale marketplaces
-     • Craft and art project applications
-     • Furniture or decoration conversions
-  
-  6. ENVIRONMENTAL IMPACT ANALYSIS
-     Sustainability metrics:
-     • Carbon footprint reduction by recycling
-     • Resource conservation statistics
-     • Water usage savings
-     • Energy efficiency gains
-     • Cumulative impact (e.g., "1000 bottles = X trees saved")
-     • Climate change implications
-  
-  7. ACTION PLAN WITH TIMELINE
-     Concrete next steps:
-     • Immediate actions (today)
-     • Short-term (within week)
-     • Medium-term (within month)
-     • Long-term (annual impact)
-     • Necessary resources and contacts
-     • Cost implications (if any)
+  weights/
+    best.pt         Custom-trained YOLO model (6.2 MB)
 
-Example Analysis (Plastic Bottle):
-
-  🔍 ITEM ANALYSIS
-     ✓ Material: Polyethylene Terephthalate (PET #1)
-     ✓ Condition: Excellent (95% detection confidence)
-     ✓ Reusability: Fully recyclable
-  
-  ♻️ RECYCLING METHOD
-     Preparation:
-     • Rinse with water
-     • Remove label (optional)
-     • Remove plastic cap separately
-     • Crush to save bin space
-     
-     Process:
-     • Shred into small flakes
-     • Melt and extrude into pellets
-     • Form new bottles, fibers, or containers
-     
-     Facility: Curbside bin or municipal recycling center
-  
-  🌍 ENVIRONMENTAL IMPACT
-     • Saves 66% energy vs. new production
-     • Prevents 0.3 kg CO2 emissions (vs. landfill)
-     • Saves ~2 tablespoons crude oil
-     • Saves 500ml water
-     • Recyclable 1000+ times
-  
-  💡 REUSE IDEAS
-     • Refill with filtered water
-     • DIY plant container/terrarium
-     • Storage container
-  
-  ⏱️ ACTION PLAN
-     1. TODAY: Place in recycling bin
-     2. TOMORROW: Collection day
-     3. WEEK 1: Transport to facility
-     4. MONTH 1: Transformed into new product
-     5. ANNUAL: ~100 bottles = 30kg CO2 prevented
+  API_SETUP_GUIDE.md   Step-by-step Gemini key setup
+  DATASET_GUIDE.md     Dataset info & training guide
+  README.md            Project overview & quick start
 
 
-CODEBASE STRUCTURE
-------------------
+WASTE CATEGORIES
+----------------
 
-app.py (Main Streamlit Application):
-  ├── Page configuration and custom CSS
-  ├── Sidebar Controls:
-  │   ├── Model selection (Nano/Small/Medium)
-  │   ├── Confidence threshold slider
-  │   ├── Waste categories viewer
-  │   ├── System info display
-  │   ├── Detection history viewer
-  │   └── Analytics dashboard toggle
-  ├── Model Loading with error handling
-  ├── Main Detection Interface:
-  │   ├── Start/Stop detection button
-  │   ├── Live video feed display
-  │   └── Real-time results rendering
-  └── Analytics Dashboard (optional):
-      ├── Session statistics
-      ├── Category distribution chart
-      ├── Top detected items
-      └── Detection timeline
+  ♻️  RECYCLABLE (13 general + 30 e-waste)
+      General:  cardboard_box, can, plastic_bottle_cap, plastic_bottle,
+                reuseable_paper, paper, cardboard, aluminum, glass_bottle,
+                metal_can, plastic, newspaper, magazine
+      E-waste:  laptop, monitor, keyboard, mouse, smartphone, tablet,
+                motherboard, gpu, ram_module, hard_disk_drive, ssd_drive,
+                charger, power_bank, headphones, etc.
 
-helper.py (Detection Engine & AI Integration):
-  ├── Google Gemini Configuration
-  │   └── API key setup (line ~6)
-  ├── Logging Functions:
-  │   ├── initialize_log_files()
-  │   ├── log_detection_session()
-  │   ├── get_detection_history()
-  │   └── get_detection_stats()
-  ├── Model Functions:
-  │   ├── load_model() - YOLOv11 loading with GPU opt.
-  │   └── classify_waste_type() - Category mapping
-  ├── Detection Functions:
-  │   ├── assess_object_quality() - Confidence scoring
-  │   ├── _display_detected_frames() - Per-frame processing
-  │   └── play_webcam() - Real-time detection loop
-  └── AI Integration:
-      └── get_recycling_suggestions() - Gemini analysis
+  ⚠️  NON-RECYCLABLE (17)
+      plastic_bag, scrap_paper, stick, plastic_cup, snack_bag,
+      plastic_box, straw, plastic_cup_lid, scrap_plastic,
+      cardboard_bowl, plastic_cultery, foam, styrofoam,
+      tissue, napkin, food_waste, organic_waste
 
-settings.py (Configuration):
-  ├── File paths and project root
-  ├── MODEL_DIR - weights folder location
-  ├── DETECTION_MODEL - fine-tuned model path
-  ├── WEBCAM_PATH - device index (0 = laptop webcam)
-  ├── RECYCLABLE[] - 13 recyclable waste types
-  ├── NON_RECYCLABLE[] - 17 non-recyclable types
-  └── HAZARDOUS[] - 10 hazardous waste types
-
-train.py (Model Training):
-  ├── Dataset loading (YOLO format)
-  ├── YAML configuration
-  ├── YOLOv11 model initialization
-  ├── Training loop (50 epochs)
-  ├── Validation metrics
-  ├── ONNX export
-  └── Model saving to weights/
-
-logging Files (Auto-Generated):
-  ├── detection_logs.json - Full session details
-  │   ├── timestamp, model name, confidence threshold
-  │   ├── All detected items list
-  │   ├── Waste category breakdown
-  │   ├── Quality assessments
-  │   ├── Processing statistics
-  │   └── FPS metrics
-  │
-  └── detection_stats.csv - Aggregated item statistics
-      ├── Item name
-      ├── Total detection count
-      ├── Average confidence score
-      └── Category classification
-
-
-WASTE CATEGORIES (40+ Classes)
------------------------------
-
-♻️ RECYCLABLE (13 types):
-   1. cardboard_box      6. plastic
-   2. can                7. newspaper
-   3. plastic_bottle_cap 8. magazine
-   4. plastic_bottle     9. aluminum
-   5. reuseable_paper    10. glass_bottle
-   11. metal_can         12. paper
-   13. cardboard
-
-⚠️ NON-RECYCLABLE (17 types):
-   1. plastic_bag        8. plastic_box
-   2. scrap_paper        9. straw
-   3. stick              10. plastic_cup_lid
-   4. plastic_cup        11. scrap_plastic
-   5. snack_bag          12. cardboard_bowl
-   6. tissue             13. plastic_cutlery
-   7. napkin             14. foam
-   15. styrofoam         16. food_waste
-   17. organic_waste
-
-🚨 HAZARDOUS (10 types):
-   1. battery            6. electronic_waste
-   2. chemical_spray_can 7. broken_glass
-   3. chemical_plastic_bottle  8. sharp_objects
-   4. chemical_plastic_gallon   9. medical_waste
-   5. light_bulb         10. paint_bucket
+  🚨 HAZARDOUS (10)
+      chemical_spray_can, chemical_plastic_bottle,
+      chemical_plastic_gallon, paint_bucket, medical_waste,
+      broken_glass, sharp_objects, battery, lithium_battery, light_bulb
 
 
 TECHNOLOGY STACK
 ----------------
 
-Core ML/AI:
-  • PyTorch 2.6.0 - Deep learning framework with CUDA support
-  • Ultralytics 8.14.0 - YOLOv11 implementation
-  • Google Generative AI 0.8.6 - Gemini API client
-  • ONNX 1.18.0 - Model export format
-
-Computer Vision:
-  • OpenCV 4.8 - Video capture and image processing
-  • Pillow 11.2 - Image manipulation utilities
-  • NumPy 2.2.0 - Numerical computing
-
-Web Framework:
-  • Streamlit 1.42.0 - Interactive web UI
-  • Pandas 2.2.3 - Data analysis and visualization
-  • Matplotlib 3.10.0 - Plotting and charts
-
-Utilities:
-  • PyYAML 6.0.2 - Configuration file parsing
-  • Requests 2.32.3 - HTTP requests
-  • tqdm 4.67.1 - Progress bars
-  • SciPy 1.15.0 - Scientific computing
-
-GPU Acceleration (Optional):
-  • CUDA 11.8+ - GPU compute platform
-  • cuDNN 8.6+ - GPU-accelerated neural network library
-  • NVIDIA GPU Driver (latest)
+  Core:     PyTorch 2.6 · Ultralytics (YOLO11) · Google Generative AI
+  Vision:   OpenCV 4.8 · Pillow · NumPy
+  Web:      Streamlit 1.42 · Pandas · Matplotlib
+  Config:   python-dotenv · PyYAML
+  GPU:      CUDA 11.8+ · cuDNN 8.6+ (optional)
 
 
-PERFORMANCE METRICS
--------------------
+PERFORMANCE BENCHMARKS
+----------------------
 
-Detection Accuracy:
-  • mAP50: 92% (Average Precision @ IoU threshold 0.5)
-  • mAP50-95: 78% (Multi-scale average precision)
-  • Precision: 90% (of detected, how many are correct)
-  • Recall: 88% (of actual items, how many detected)
-  • F1-Score: 0.89 (harmonic mean)
+  Detection accuracy:
+    mAP50 = 92 %  ·  mAP50-95 = 78 %  ·  P = 90 %  ·  R = 88 %
 
-Speed Benchmarks:
-  GPU (Tesla T4 / V100):
-    • Small model: 10-12 ms inference, 30-40 fps
-    • Nano model: 5-8 ms inference, 40-50 fps
-    • Medium model: 15-18 ms inference, 20-30 fps
-  
-  CPU (Intel i7/Ryzen 7):
-    • Small model: 100 ms inference, 10 fps
-    • Nano model: 50 ms inference, 20 fps
-    • Medium model: 150 ms inference, 6-7 fps
+  Inference speed (per frame):
+                GPU (T4)    GPU (V100)    CPU (i7)
+    Nano        5–8 ms       3–5 ms       50 ms
+    Small      10–12 ms      6–8 ms      100 ms
+    Medium     15–18 ms     10–12 ms     150 ms
 
-Memory Usage:
-  • Model memory (GPU): 256MB (Nano), 512MB (Small), 1GB (Medium)
-  • Runtime memory: ~2-4 GB depending on batch size
-  • Disk space: 6MB (Nano), 25MB (Small), 51MB (Medium)
+  Real-time FPS:
+                GPU         CPU
+    Nano       40–50 fps   15–20 fps
+    Small      30–40 fps   10 fps
+    Medium     20–30 fps    6–7 fps
 
 
-DEPLOYMENT OPTIONS
-------------------
+DEPLOYMENT
+----------
 
-Local Deployment:
-  pip install -r requirements.txt
-  streamlit run app.py
-  Access: http://localhost:8501
+  Local:
+    pip install -r requirements.txt
+    streamlit run app.py          # → http://localhost:8501
 
-Streamlit Cloud:
-  1. Push project to GitHub
-  2. Connect repo in Streamlit Cloud
-  3. Auto-deploy on push
-  4. Public URL provided
+  Streamlit Cloud:
+    Push to GitHub → connect in Streamlit Cloud → auto-deploy
 
-Docker Deployment:
-  docker build -t waste-detection .
-  docker run -p 8501:8501 waste-detection
-
-Cloud Platforms:
-  • AWS EC2: EC2 instance + S3 for logs
-  • Google Cloud Run: Containerized deployment
-  • Azure App Service: Managed web app
-  • Heroku: Simplified deployment (though free tier discontinued)
-
-
-RESOURCE LINKS
---------------
-
-Project Repository:
-  https://github.com/boss4848/waste-detection
-
-Training Dataset:
-  https://universe.roboflow.com/ai-project-i3wje/waste-detection-vqkjo/model/3
-
-Documentation:
-  • YOLOv11: https://docs.ultralytics.com/
-  • Streamlit: https://docs.streamlit.io/
-  • PyTorch: https://pytorch.org/docs/stable/index.html
-  • Google Gemini: https://ai.google.dev/
-
-APIs:
-  • Google AI Studio: https://makersuite.google.com/app/apikey
-  • Roboflow: https://universe.roboflow.com/
-
-Learning Resources:
-  • YOLOv11 Training on Colab: [Link to research notebook]
-  • Real-time Object Detection: [Implementations]
-  • Waste Management Classification: [Academic papers]
-
-
-LICENSE & ATTRIBUTION
----------------------
-
-Project License: MIT
-Dataset License: CC BY 4.0 (Creative Commons Attribution)
-Citation:
-  @software{waste_detection_2024,
-    title={Intelligent Waste Segregation System},
-    author={AI Development Team},
-    year={2024},
-    url={https://github.com/boss4848/waste-detection}
-  }
-
-
-SYSTEM REQUIREMENTS
--------------------
-
-Minimum:
-  • OS: Windows 10+, macOS 10.13+, Ubuntu 18.04+
-  • CPU: Dual-core 2.0 GHz
-  • RAM: 4 GB
-  • Storage: 2 GB (weights included)
-  • Webcam: 640x480 minimum
-  • Internet: Required (model download, Gemini API)
-
-Recommended:
-  • CPU: Quad-core 3.0+ GHz
-  • RAM: 8 GB+
-  • Storage: 5 GB
-  • GPU: NVIDIA with CUDA 11.8+ (4GB VRAM)
-  • Webcam: 1280x720 or higher
-  • Network: High-speed internet (100+ Mbps)
-
-Development:
-  • Python 3.8+
-  • pip / conda package manager
-  • Git for version control
-  • Code editor (VS Code, PyCharm, etc.)
-
-
-TROUBLESHOOTING GUIDE
----------------------
-
-Symptom: Webcam not detected
-  Solution: 
-  1. Check permissions in system settings
-  2. Try different indexes in settings.py (0, 1, 2...)
-  3. Verify webcam works in other applications
-  4. Restart application
-
-Symptom: CUDA Out of Memory (OOM)
-  Solution:
-  1. Switch to Nano model (smaller)
-  2. Reduce video resolution
-  3. Use CPU mode
-  4. Close other GPU applications
-
-Symptom: Low FPS (10 FPS on CPU)
-  Solution:
-  1. Install CUDA 11.8+
-  2. Verify: python -c "import torch; print(torch.cuda.is_available())"
-  3. Switch to Nano model
-  4. Use GPU-capable device
-
-Symptom: Gemini API errors
-  Solution:
-  1. Verify API key at https://makersuite.google.com/app/apikey
-  2. Check internet connection
-  3. Ensure API quota not exceeded
-  4. Try again later
-
-Symptom: Model not loading
-  Solution:
-  1. Check internet (auto-downloads if missing)
-  2. Verify disk space (need ~100MB)
-  3. Check file permissions
-  4. Reinstall ultralytics: pip install --upgrade ultralytics
-
-
-VERSION HISTORY
----------------
-
-v2.0 (Current - February 2026):
-  ✓ Gemini 2.0 Flash AI integration
-  ✓ 3-model variant selection (Nano/Small/Medium)
-  ✓ Comprehensive analytics dashboard
-  ✓ JSON + CSV logging system
-  ✓ Object quality assessment
-  ✓ 40+ waste category classification
-  ✓ Production-ready
-
-v1.0 (Previous):
-  • Basic YOLOv11 detection
-  • Single model support
-  • Manual recycling guidance
+  Docker:
+    docker build -t waste-detection .
+    docker run -p 8501:8501 waste-detection
 
 
 ================================================================================
-END - ARCHITECTURE DOCUMENTATION - v2.0 - PRODUCTION READY ✅
+END
 ================================================================================
