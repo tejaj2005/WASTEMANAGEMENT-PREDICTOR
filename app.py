@@ -1,276 +1,358 @@
+"""
+Intelligent Waste Segregation System — Streamlit Application
+"""
 from pathlib import Path
 import streamlit as st
 import helper
 import settings
-import os
 
+# ─── Page Config ──────────────────────────────────────────
 st.set_page_config(
     page_title="Intelligent Waste Segregation System",
     page_icon="♻️",
     layout="wide",
-    initial_sidebar_state="expanded"
+    initial_sidebar_state="expanded",
 )
 
-# Custom CSS for better UI
+# ─── Custom CSS for Premium UI ────────────────────────────
 st.markdown("""
-    <style>
-    .main {
-        padding: 2rem;
-    }
-    .stButton > button {
-        width: 100%;
-        padding: 0.75rem;
-        font-size: 1.1rem;
-        font-weight: bold;
-    }
-    </style>
-    """, unsafe_allow_html=True)
+<style>
+/* ── Import Google Font ─────────────────────────────── */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
 
+/* ── Root variables ─────────────────────────────────── */
+:root {
+    --accent:       #00C896;
+    --accent-soft:  #00C89620;
+    --danger:       #FF4B6E;
+    --warn:         #FFB84D;
+    --bg-card:      rgba(255,255,255,0.04);
+    --border:       rgba(255,255,255,0.08);
+    --radius:       12px;
+}
+
+/* ── Global typography ──────────────────────────────── */
+html, body, [class*="css"] {
+    font-family: 'Inter', sans-serif !important;
+}
+
+/* ── Main content area ──────────────────────────────── */
+.main .block-container {
+    padding: 2rem 2.5rem;
+    max-width: 1200px;
+}
+
+/* ── Sidebar ────────────────────────────────────────── */
+section[data-testid="stSidebar"] {
+    background: linear-gradient(180deg,
+        rgba(17,24,39,0.97) 0%,
+        rgba(10,15,28,0.99) 100%);
+    border-right: 1px solid var(--border);
+}
+section[data-testid="stSidebar"] .stMarkdown h1,
+section[data-testid="stSidebar"] .stMarkdown h2,
+section[data-testid="stSidebar"] .stMarkdown h3 {
+    color: var(--accent) !important;
+}
+
+/* ── Cards (metric boxes, expanders) ────────────────── */
+div[data-testid="stMetric"] {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 1rem 1.2rem;
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+div[data-testid="stMetric"]:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 20px rgba(0,200,150,0.12);
+}
+div[data-testid="stMetric"] label {
+    font-weight: 600 !important;
+    letter-spacing: 0.02em;
+}
+
+/* ── Expanders ──────────────────────────────────────── */
+details[data-testid="stExpander"] {
+    border: 1px solid var(--border) !important;
+    border-radius: var(--radius) !important;
+    background: var(--bg-card) !important;
+    transition: border-color 0.25s;
+}
+details[data-testid="stExpander"]:hover {
+    border-color: var(--accent) !important;
+}
+
+/* ── Buttons ────────────────────────────────────────── */
+.stButton > button {
+    width: 100%;
+    padding: 0.65rem 1rem;
+    font-weight: 600;
+    font-size: 0.95rem;
+    border-radius: 8px;
+    transition: all 0.25s ease;
+    border: 1px solid var(--border);
+}
+.stButton > button:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 14px rgba(0,200,150,0.18);
+    border-color: var(--accent);
+}
+
+/* ── Toggle / checkbox accent ───────────────────────── */
+.stToggle label span[data-testid="stToggleLabel"] {
+    font-weight: 500;
+}
+
+/* ── Slider ─────────────────────────────────────────── */
+.stSlider > div > div > div {
+    background: linear-gradient(90deg, var(--accent), #0090FF) !important;
+}
+
+/* ── Divider ────────────────────────────────────────── */
+hr {
+    border-color: var(--border) !important;
+}
+
+/* ── Success / warning / error alerts ───────────────── */
+div[data-testid="stAlert"] {
+    border-radius: 8px;
+}
+
+/* ── Smooth image rendering ─────────────────────────── */
+img {
+    border-radius: 8px;
+}
+
+/* ── Hero heading animation ─────────────────────────── */
+@keyframes fadeSlideIn {
+    from { opacity: 0; transform: translateY(-8px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+h1 {
+    animation: fadeSlideIn 0.6s ease-out;
+}
+</style>
+""", unsafe_allow_html=True)
+
+
+# ─── Sidebar ──────────────────────────────────────────────
 st.sidebar.title("⚙️ Detection Console")
 st.sidebar.markdown("---")
 
-
-# Model selection - Default to Best trained model
+# Model selection
 model_type = st.sidebar.radio(
     "Select Model",
-    ["🏆 Custom Trained (Best)", "Fast (Nano)", "Balanced (Small)", "Accurate (Medium)"],
+    ["🏆 Custom Trained (Best)", "Fast (Nano)",
+     "Balanced (Small)", "Accurate (Medium)"],
     index=0,
-    help="🏆 Best = Custom trained on E-waste dataset | Others = Pre-trained YOLOv11 (General)"
+    help=(
+        "🏆 Best = your custom-trained E-waste model  ·  "
+        "Others = pre-trained YOLO11 (general objects)"
+    ),
 )
 
-model_map = {
+_MODEL_MAP = {
     "🏆 Custom Trained (Best)": "weights/best.pt",
-    "Fast (Nano)": "yolo11n.pt",
-    "Balanced (Small)": "yolo11s.pt",
-    "Accurate (Medium)": "yolo11m.pt"
+    "Fast (Nano)":              "yolo11n.pt",
+    "Balanced (Small)":         "yolo11s.pt",
+    "Accurate (Medium)":        "yolo11m.pt",
 }
 
-# Get the selected model file name
-selected_model = model_map[model_type]
+selected_model = _MODEL_MAP[model_type]
 
-# Determine the full model path
 if selected_model.startswith("weights/"):
-    # Local best.pt file
-    model_path = Path(settings.MODEL_DIR) / selected_model.replace("weights/", "")
+    model_path = settings.MODEL_DIR / selected_model.replace("weights/", "")
 else:
-    # Pre-trained models: Just use the filename, let YOLO handle download
-    model_path = selected_model
+    model_path = selected_model  # YOLO auto-downloads
 
+
+# ─── API Key ──────────────────────────────────────────────
+st.sidebar.markdown("---")
+with st.sidebar.expander("🔑 API Configuration", expanded=False):
+    default_key = settings.GEMINI_API_KEY
+    if "gemini_api_key" not in st.session_state:
+        st.session_state["gemini_api_key"] = default_key
+
+    key_input = st.text_input(
+        "Gemini API Key",
+        value=st.session_state["gemini_api_key"],
+        type="password",
+        help="Get a free key → aistudio.google.com/app/apikey",
+    )
+    if key_input:
+        st.session_state["gemini_api_key"] = key_input
+        st.success("✅ Key saved")
+    else:
+        st.warning("⚠️ No API key — AI suggestions disabled")
+
+
+# ─── Hero Section ────────────────────────────────────────
 st.title("♻️ Intelligent Waste Segregation System")
 st.markdown("""
-    **Advanced AI-Powered Waste Detection & Recycling Guidance**
-    
-    This system uses the latest YOLOv11 deep learning model to detect waste items with high accuracy 
-    and provides AI-powered recycling suggestions using Google Gemini 2.0 Flash.
-    
-    ✨ Features:
-    - Real-time E-waste & General waste detection
-    - Object quality assessment
-    - AI-powered recycling recommendations
-    - Environmental impact analysis
+> **Real-time AI waste detection** powered by **YOLO11** and
+> **Google Gemini 2.0 Flash**.
+
+| Feature | Details |
+|---------|---------|
+| 🎯 Detection | 40+ waste types at **30 FPS** (GPU) |
+| 🤖 AI Guidance | Recycling, hazard warnings, reuse tips |
+| 📊 Analytics | Live dashboard with session history |
 """)
 
 st.markdown("---")
 
-# API Key Configuration
-# API Key Configuration
-st.sidebar.markdown("---")
-with st.sidebar.expander("🔑 API Configuration", expanded=False):
-    # Default API Key from settings
-    default_api_key = getattr(settings, 'GEMINI_API_KEY', '')
-    
-    # Store in session state if not already set
-    if 'gemini_api_key' not in st.session_state:
-        st.session_state['gemini_api_key'] = default_api_key
 
-    # Input field to override
-    api_key_input = st.text_input(
-        "Gemini API Key", 
-        value=st.session_state['gemini_api_key'], 
-        type="password", 
-        help="Get key from aistudio.google.com"
-    )
+# ─── Load Model ──────────────────────────────────────────
+@st.cache_resource(show_spinner=False)
+def _load(path: str):
+    return helper.load_model(path)
 
-    if api_key_input:
-        st.session_state['gemini_api_key'] = api_key_input
-        st.success("✅ Configured")
-    else:
-        st.warning("⚠️ No API Key provided.")
 
-# Model loading with error handling
-model = None
-
-@st.cache_resource
-def load_yolo_model(model_path_str):
-    """Load YOLO model and cache it"""
-    try:
-        return helper.load_model(model_path_str)
-    except Exception as e:
-        return None
-
-with st.spinner(f"⏳ Loading {model_type}..."):
-    model = load_yolo_model(str(model_path))
+with st.spinner(f"⏳ Loading **{model_type}**…"):
+    model = _load(str(model_path))
 
 if model is not None:
-    st.sidebar.success(f"✅ {model_type} loaded successfully")
+    st.sidebar.success(f"✅ {model_type} loaded")
 else:
-    st.sidebar.error("❌ Model loading failed")
-    with st.error("⚠️ Model Failed to Load"):
-        st.markdown(f"""
-**Possible causes**:
-- File not found or download failed: {model_path}
-- Internet connection needed for first-time download
-- Corrupted model file
+    st.sidebar.error("❌ Model failed to load")
+    st.error(f"""
+**Model could not be loaded:** `{model_path}`
 
-**Solutions**:
-1. **For 🏆 Custom Trained Model**: Verify `weights/best.pt` exists.
-2. **For Pre-trained Models**: Check internet connection.
-3. Refresh browser: F5
-        """)
+| Possible cause | Fix |
+|----------------|-----|
+| File missing   | Ensure `weights/best.pt` exists |
+| No internet    | Needed for first-time YOLO download |
+| Corrupt file   | Delete the `.pt` and re-download |
 
-# Confidence threshold slider
+Refresh the page (F5) after fixing.
+""")
+    st.stop()
+
+
+# ─── Confidence slider ───────────────────────────────────
 st.sidebar.markdown("---")
 confidence = st.sidebar.slider(
-    "Detection Confidence Threshold",
-    min_value=0.1,
-    max_value=0.9,
-    value=0.4,
+    "Detection Confidence",
+    min_value=0.10,
+    max_value=0.90,
+    value=0.40,
     step=0.05,
-    help="Lower = more detections | Higher = fewer but more accurate detections"
+    help="Lower → more detections  ·  Higher → fewer, more precise",
 )
-
-# Store in session state for helper.py access
 st.session_state.confidence = confidence
-
-st.sidebar.markdown("---")
-
-# Waste categories info
-with st.sidebar.expander("📋 Waste Categories"):
-    st.write("**♻️ Recyclable:**")
-    st.write("Paper, Plastic, Metal, Glass, E-waste Components")
-    st.write("\n**⚠️ Non-Recyclable:**")
-    st.write("Organic, Styrofoam, Contaminated items")
-    st.write("\n**🚨 Hazardous:**")
-    st.write("Batteries, Chemicals, Medical Waste")
-
-st.sidebar.markdown("---")
-
-# System info
-with st.sidebar.expander("ℹ️ System Info"):
-    import torch
-    st.write(f"**PyTorch Version:** {torch.__version__}")
-    st.write(f"**CUDA Available:** {'Yes ✅' if torch.cuda.is_available() else 'No (CPU Mode)'}")
-    st.write(f"**YOLOv11 Model:** {selected_model}")
-    if st.session_state.get('gemini_api_key'):
-        st.write(f"**Gemini 2.0 Flash:** ✅ Configured")
-    else:
-        st.write(f"**Gemini 2.0 Flash:** ⚠️ Not Configured")
-
-# Store model name in session state for logging
 st.session_state.model_name = selected_model
 
-# Detection history viewer
-with st.sidebar.expander("📊 Detection History"):
-    if st.button("🔄 Refresh History", use_container_width=True):
-        st.rerun()
-    
-    history = helper.get_detection_history()
-    stats = helper.get_detection_stats()
-    
-    if history:
-        st.subheader("Recent Sessions")
-        for session in history[-5:]:  # Show last 5 sessions
-            with st.container():
-                st.caption(f"🕐 {session['timestamp'][:19]}")
-                st.write(f"**Model:** {session['model']}")
-                st.write(f"**Frames:** {session['frames_processed']} | **FPS:** {session['avg_fps']:.1f}")
-                st.write(f"**Items Detected:** {len(session['detected_items'])}")
-                if session['recyclable']:
-                    st.write(f"♻️ Recyclable: {', '.join(session['recyclable'])}")
-                if session['non_recyclable']:
-                    st.write(f"⚠️ Non-Recyclable: {', '.join(session['non_recyclable'])}")
-                if session['hazardous']:
-                    st.write(f"🚨 Hazardous: {', '.join(session['hazardous'])}")
-    else:
-        st.info("No detection history yet. Start detection to begin logging.")
-    
-    if stats:
-        st.subheader("Detection Statistics")
-        st.dataframe(stats, use_container_width=True, hide_index=True)
 
+# ─── Sidebar Info Panels ─────────────────────────────────
 st.sidebar.markdown("---")
 
-# Visualization Dashboard Toggle
-show_dashboard = st.sidebar.checkbox("📈 Show Analytics Dashboard", value=False)
+with st.sidebar.expander("📋 Waste Categories"):
+    st.markdown("""
+**♻️ Recyclable** — Paper, Plastic, Metal, Glass, E-waste\n
+**⚠️ Non-Recyclable** — Organic, Styrofoam, Contaminated\n
+**🚨 Hazardous** — Batteries, Chemicals, Medical
+""")
 
-# Main detection interface
-if model is not None:
-    # Analytics Dashboard
-    if show_dashboard:
-        st.markdown("---")
-        st.header("📈 Analytics Dashboard")
-        
-        history = helper.get_detection_history()
-        stats = helper.get_detection_stats()
-        
-        if history and stats:
-            col1, col2, col3, col4 = st.columns(4)
-            
-            with col1:
-                st.metric("Total Sessions", len(history))
-            with col2:
-                total_frames = sum(s['frames_processed'] for s in history)
-                st.metric("Total Frames", f"{total_frames:,}")
-            with col3:
-                avg_fps = sum(s['avg_fps'] for s in history) / len(history) if history else 0
-                st.metric("Avg FPS", f"{avg_fps:.1f}")
-            with col4:
-                total_items = sum(len(s['detected_items']) for s in history)
-                st.metric("Items Detected", total_items)
-            
-            # Category Distribution Chart
-            st.subheader("📊 Category Distribution")
-            import pandas as pd
-            
-            category_counts = {'Recyclable': 0, 'Non-Recyclable': 0, 'Hazardous': 0}
-            for session in history:
-                category_counts['Recyclable'] += len(session.get('recyclable', []))
-                category_counts['Non-Recyclable'] += len(session.get('non_recyclable', []))
-                category_counts['Hazardous'] += len(session.get('hazardous', []))
-            
-            df_categories = pd.DataFrame({
-                'Category': list(category_counts.keys()),
-                'Count': list(category_counts.values())
-            })
-            st.bar_chart(df_categories.set_index('Category'))
-            
-            # Top Detected Items
-            st.subheader("🔝 Most Detected Items")
-            df_stats = pd.DataFrame(stats)
-            if not df_stats.empty:
-                df_stats['detection_count'] = pd.to_numeric(df_stats['detection_count'])
-                top_items = df_stats.nlargest(10, 'detection_count')[['item_name', 'detection_count', 'category']]
-                st.dataframe(top_items, use_container_width=True, hide_index=True)
-            
-            # Session Timeline
-            st.subheader("⏱️ Detection Timeline")
-            session_data = []
-            for session in history[-10:]:  # Last 10 sessions
-                session_data.append({
-                    'Timestamp': session['timestamp'][:19],
-                    'FPS': session['avg_fps'],
-                    'Items': len(session['detected_items'])
-                })
-            df_timeline = pd.DataFrame(session_data)
-            st.line_chart(df_timeline.set_index('Timestamp'))
-            
-        else:
-            st.info("📊 No data available yet. Start detection to generate analytics.")
-        
-        st.markdown("---")
-    
-    # Live Detection Section
-    helper.play_webcam(model)
-else:
-    st.error("❌ Detection disabled. Please configure the model properly.")
-    st.info("Try refreshing the page or check your internet connection.")
+with st.sidebar.expander("ℹ️ System Info"):
+    import torch
+    st.write(f"**PyTorch** {torch.__version__}")
+    gpu = "Yes ✅" if torch.cuda.is_available() else "CPU only"
+    st.write(f"**CUDA** {gpu}")
+    st.write(f"**Model** `{selected_model}`")
+    key_ok = "✅" if st.session_state.get("gemini_api_key") else "⚠️ missing"
+    st.write(f"**Gemini API** {key_ok}")
+
+
+# ─── Detection History ───────────────────────────────────
+with st.sidebar.expander("📊 Detection History"):
+    if st.button("🔄 Refresh", use_container_width=True):
+        st.rerun()
+
+    history = helper.get_detection_history()
+    stats   = helper.get_detection_stats()
+
+    if history:
+        st.caption("**Recent sessions**")
+        for s in history[-5:]:
+            with st.container():
+                st.caption(f"🕐 {s['timestamp'][:19]}")
+                st.write(f"Model: {s['model']}  ·  "
+                         f"Frames: {s['frames_processed']}  ·  "
+                         f"FPS: {s['avg_fps']:.1f}")
+                for label, key in [("♻️", "recyclable"),
+                                   ("⚠️", "non_recyclable"),
+                                   ("🚨", "hazardous")]:
+                    items = s.get(key, [])
+                    if items:
+                        st.write(f"{label} {', '.join(items)}")
+    else:
+        st.info("No sessions yet — start detection to begin logging.")
+
+    if stats:
+        st.caption("**Item statistics**")
+        st.dataframe(stats, use_container_width=True, hide_index=True)
+
+
+# ─── Analytics Dashboard ─────────────────────────────────
+st.sidebar.markdown("---")
+show_dash = st.sidebar.checkbox("📈 Show Analytics Dashboard", value=False)
+
+if show_dash:
+    st.markdown("---")
+    st.header("📈 Analytics Dashboard")
+
+    history = helper.get_detection_history()
+    stats   = helper.get_detection_stats()
+
+    if history and stats:
+        import pandas as pd
+
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("Sessions",    len(history))
+        c2.metric("Total Frames", f"{sum(s['frames_processed'] for s in history):,}")
+        avg_fps = sum(s["avg_fps"] for s in history) / len(history)
+        c3.metric("Avg FPS",     f"{avg_fps:.1f}")
+        c4.metric("Items Found", sum(len(s["detected_items"]) for s in history))
+
+        # Category bar chart
+        st.subheader("📊 Category Distribution")
+        cats = {"Recyclable": 0, "Non-Recyclable": 0, "Hazardous": 0}
+        for s in history:
+            cats["Recyclable"]     += len(s.get("recyclable", []))
+            cats["Non-Recyclable"] += len(s.get("non_recyclable", []))
+            cats["Hazardous"]      += len(s.get("hazardous", []))
+        st.bar_chart(
+            pd.DataFrame({"Category": cats.keys(), "Count": cats.values()})
+            .set_index("Category")
+        )
+
+        # Top items
+        st.subheader("🔝 Most Detected Items")
+        df = pd.DataFrame(stats)
+        if not df.empty:
+            df["detection_count"] = pd.to_numeric(df["detection_count"])
+            st.dataframe(
+                df.nlargest(10, "detection_count")
+                  [["item_name", "detection_count", "category"]],
+                use_container_width=True,
+                hide_index=True,
+            )
+
+        # Timeline
+        st.subheader("⏱️ Detection Timeline")
+        rows = [
+            {"Timestamp": s["timestamp"][:19],
+             "FPS": s["avg_fps"],
+             "Items": len(s["detected_items"])}
+            for s in history[-10:]
+        ]
+        st.line_chart(pd.DataFrame(rows).set_index("Timestamp"))
+    else:
+        st.info("📊 No data yet — start detection to generate analytics.")
+
+    st.markdown("---")
+
+
+# ─── Live Detection ───────────────────────────────────────
+helper.play_webcam(model)
