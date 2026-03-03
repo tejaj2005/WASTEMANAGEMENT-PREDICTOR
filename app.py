@@ -40,9 +40,9 @@ model_type = st.sidebar.radio(
 
 model_map = {
     "🏆 Custom Trained (Best)": "weights/best.pt",
-    "Fast (Nano)": "yolov11n.pt",
-    "Balanced (Small)": "yolov11s.pt",
-    "Accurate (Medium)": "yolov11m.pt"
+    "Fast (Nano)": "yolo11n.pt",
+    "Balanced (Small)": "yolo11s.pt",
+    "Accurate (Medium)": "yolo11m.pt"
 }
 
 # Get the selected model file name

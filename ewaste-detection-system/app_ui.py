@@ -26,7 +26,7 @@ st.sidebar.title("Configuration")
 st.sidebar.markdown("---")
 
 # OpenRouter API Key Input
-openrouter_api_key = st.sidebar.text_input("Enter OpenRouter API Key", value="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", type="password", help="Required for AI-powered suggestions via OpenRouter.")
+openrouter_api_key = st.sidebar.text_input("Enter OpenRouter API Key", value="", type="password", help="Required for AI-powered suggestions via OpenRouter. Get key from openrouter.ai")
 
 # Initialize Intelligence Layer (Use Advanced if Key present)
 @st.cache_resource

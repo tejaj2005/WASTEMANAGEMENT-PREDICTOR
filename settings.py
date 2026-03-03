@@ -1,4 +1,6 @@
 from pathlib import Path
+import os
+from dotenv import load_dotenv
 import sys
 
 file_path = Path(__file__).resolve()
@@ -12,8 +14,11 @@ ROOT = root_path
 MODEL_DIR = ROOT / "weights"
 DETECTION_MODEL = MODEL_DIR / "best.pt"
 
-# Google Gemini API Key
-GEMINI_API_KEY = "AIzaSyBj_-jxwNdsmHoXtvBriSH6sgioiPqiyww"
+# Load environment variables from .env file
+load_dotenv()
+
+# Google Gemini API Key (loaded from .env file or environment variable)
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 
 # Webcam (0 = laptop webcam)
 WEBCAM_PATH = 0

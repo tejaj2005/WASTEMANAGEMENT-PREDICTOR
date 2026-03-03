@@ -16,9 +16,8 @@ import os
 try:
     import google.generativeai as genai
     GEMINI_AVAILABLE = True
-    # Configure Gemini API with the provided API key
-    GEMINI_API_KEY = "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"
-    genai.configure(api_key=GEMINI_API_KEY)
+    # API key is configured dynamically from sidebar input (session state)
+    # No hardcoded keys — user provides via UI or .env file
 except ImportError:
     GEMINI_AVAILABLE = False
     genai = None

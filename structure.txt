@@ -212,7 +212,7 @@ GOOGLE GEMINI 2.0 FLASH AI INTEGRATION
 
 API Configuration:
   Provider: Google AI Studio
-  API Key: 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
+  API Key: Loaded from .env file (GEMINI_API_KEY environment variable)
   Model: gemini-2.0-flash
   Features: Multi-modal, cost-effective, fast inference
   Integration: Built into helper.py get_recycling_suggestions()

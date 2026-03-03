@@ -14,10 +14,10 @@
 
 **File**: `helper.py` (Lines 16-26)
 
-Integrated the Gemini 2.0 Flash API key directly into the system:
+Integrated the Gemini 2.0 Flash API securely using environment variables:
 ```python
-GEMINI_API_KEY = "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"
-genai.configure(api_key=GEMINI_API_KEY)
+# API key loaded from .env file
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 ```
 
 **Benefits**:
@@ -258,11 +258,11 @@ Facility: Curbside bin or municipal recycling center
 
 ## 🔐 API KEY STATUS
 
-✅ **Configured**: `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`
+✅ **Configured**: Via `.env` file (GEMINI_API_KEY environment variable)
 
-- Embedded in helper.py Line 20
-- Auto-configured on app startup
-- No user action needed
+- Loaded securely from environment variables
+- Never hardcoded in source code
+- User can also enter via sidebar UI
 - Fallback guidance if unavailable
 
 ---
