@@ -1,422 +1,346 @@
+"""
+Intelligent Waste Segregation System — Detection Engine & AI Integration
+"""
 from ultralytics import YOLO
 import time
 import streamlit as st
 import cv2
 import settings
-import threading
 import numpy as np
 import torch
 import json
 import csv
 from datetime import datetime
 from pathlib import Path
-import os
 
-# Google Generative AI Integration for Gemini 2.0 Flash
+# ─── Gemini AI Setup ─────────────────────────────────────
 try:
     import google.generativeai as genai
     GEMINI_AVAILABLE = True
-    # API key is configured dynamically from sidebar input (session state)
-    # No hardcoded keys — user provides via UI or .env file
 except ImportError:
     GEMINI_AVAILABLE = False
     genai = None
-except Exception as e:
-    GEMINI_AVAILABLE = False
-    genai = None
 
-# Logging configuration
-LOGS_DIR = Path(".")
-DETECTION_LOG_FILE = LOGS_DIR / "detection_logs.json"
-STATS_FILE = LOGS_DIR / "detection_stats.csv"
+# ─── Logging ─────────────────────────────────────────────
+LOG_FILE   = Path("detection_logs.json")
+STATS_FILE = Path("detection_stats.csv")
 
-def initialize_log_files():
-    """Initialize log files if they don't exist"""
-    if not DETECTION_LOG_FILE.exists():
-        with open(DETECTION_LOG_FILE, 'w') as f:
-            json.dump([], f)
-    
+
+def _ensure_log_files():
+    """Create log files if they don't exist."""
+    if not LOG_FILE.exists():
+        LOG_FILE.write_text("[]")
     if not STATS_FILE.exists():
-        with open(STATS_FILE, 'w', newline='') as f:
-            writer = csv.writer(f)
-            writer.writerow(['timestamp', 'item_name', 'detection_count', 'avg_confidence', 'category'])
+        with open(STATS_FILE, "w", newline="") as f:
+            csv.writer(f).writerow(
+                ["timestamp", "item_name", "detection_count",
+                 "avg_confidence", "category"]
+            )
 
-def log_detection_session(detected_items, waste_categories, quality_assessments, model_name, confidence_threshold, frame_count, processing_time):
-    """Log a complete detection session"""
-    initialize_log_files()
-    
+
+def get_detection_history() -> list:
+    """Return all logged detection sessions."""
+    _ensure_log_files()
+    try:
+        return json.loads(LOG_FILE.read_text())
+    except Exception:
+        return []
+
+
+def get_detection_stats() -> list[dict]:
+    """Return aggregated per-item statistics."""
+    _ensure_log_files()
+    try:
+        with open(STATS_FILE) as f:
+            return list(csv.DictReader(f))
+    except Exception:
+        return []
+
+
+def log_detection_session(
+    detected_items, waste_categories, quality_info,
+    model_name, confidence_threshold, frame_count, elapsed
+):
+    """Persist one complete camera session."""
+    _ensure_log_files()
     recyclable, non_recyclable, hazardous = waste_categories
-    
-    session_data = {
-        'timestamp': datetime.now().isoformat(),
-        'model': model_name,
-        'confidence_threshold': confidence_threshold,
-        'detected_items': detected_items,
-        'recyclable': list(recyclable),
-        'non_recyclable': list(non_recyclable),
-        'hazardous': list(hazardous),
-        'quality_assessments': quality_assessments,
-        'frames_processed': frame_count,
-        'processing_time_seconds': processing_time,
-        'avg_fps': frame_count / processing_time if processing_time > 0 else 0
+
+    session = {
+        "timestamp":            datetime.now().isoformat(),
+        "model":                model_name,
+        "confidence_threshold": confidence_threshold,
+        "detected_items":       detected_items,
+        "recyclable":           list(recyclable),
+        "non_recyclable":       list(non_recyclable),
+        "hazardous":            list(hazardous),
+        "quality_assessments":  quality_info,
+        "frames_processed":     frame_count,
+        "processing_time_seconds": elapsed,
+        "avg_fps":              frame_count / elapsed if elapsed > 0 else 0,
     }
-    
+
     # Append to JSON log
+    logs = get_detection_history()
+    logs.append(session)
+    LOG_FILE.write_text(json.dumps(logs, indent=2))
+
+    # Update per-item CSV stats
     try:
-        with open(DETECTION_LOG_FILE, 'r') as f:
-            logs = json.load(f)
-    except:
-        logs = []
-    
-    logs.append(session_data)
-    
-    with open(DETECTION_LOG_FILE, 'w') as f:
-        json.dump(logs, f, indent=2)
-    
-    # Update statistics CSV
-    try:
-        with open(STATS_FILE, 'r') as f:
-            reader = csv.DictReader(f)
-            stats = {row['item_name']: row for row in reader}
-    except:
+        with open(STATS_FILE) as f:
+            stats = {r["item_name"]: r for r in csv.DictReader(f)}
+    except Exception:
         stats = {}
-    
-    # Update stats for each detected item
+
     for item in detected_items:
         if item in stats:
-            stats[item]['detection_count'] = str(int(stats[item]['detection_count']) + 1)
+            stats[item]["detection_count"] = str(
+                int(stats[item]["detection_count"]) + 1
+            )
         else:
-            category = 'recyclable' if item in recyclable else ('non_recyclable' if item in non_recyclable else 'hazardous')
+            cat = (
+                "recyclable" if item in recyclable
+                else "non_recyclable" if item in non_recyclable
+                else "hazardous"
+            )
             stats[item] = {
-                'timestamp': datetime.now().isoformat(),
-                'item_name': item,
-                'detection_count': '1',
-                'avg_confidence': quality_assessments.get(item, 'N/A'),
-                'category': category
+                "timestamp":       datetime.now().isoformat(),
+                "item_name":       item,
+                "detection_count": "1",
+                "avg_confidence":  quality_info.get(item, "N/A"),
+                "category":        cat,
             }
-    
-    # Write updated stats
-    with open(STATS_FILE, 'w', newline='') as f:
-        writer = csv.DictWriter(f, fieldnames=['timestamp', 'item_name', 'detection_count', 'avg_confidence', 'category'])
-        writer.writeheader()
-        for item_name, row in stats.items():
-            writer.writerow(row)
 
-def get_detection_history():
-    """Retrieve detection history from logs"""
-    initialize_log_files()
-    try:
-        with open(DETECTION_LOG_FILE, 'r') as f:
-            return json.load(f)
-    except:
-        return []
+    with open(STATS_FILE, "w", newline="") as f:
+        w = csv.DictWriter(
+            f,
+            fieldnames=["timestamp", "item_name", "detection_count",
+                        "avg_confidence", "category"],
+        )
+        w.writeheader()
+        for row in stats.values():
+            w.writerow(row)
 
-def get_detection_stats():
-    """Retrieve detection statistics"""
-    initialize_log_files()
-    try:
-        with open(STATS_FILE, 'r') as f:
-            reader = csv.DictReader(f)
-            return list(reader)
-    except:
-        return []
 
-def load_model(model_path):
-    """Load YOLO model from local path or name"""
+# ─── Model Helpers ───────────────────────────────────────
+
+def load_model(model_path: str):
+    """Load a YOLO model; returns None on failure."""
     try:
-        from pathlib import Path
-        
-        # Convert to string and resolve path
-        model_path_str = str(model_path)
-        
-        # Try to resolve full path for local files
-        if not model_path_str.startswith(('http://', 'https://')):
-            local_path = Path(model_path_str)
-            if local_path.exists():
-                model_path_str = str(local_path.resolve())
-        
-        # Load the model
-        model = YOLO(model_path_str)
-        
+        p = Path(model_path)
+        resolved = str(p.resolve()) if p.exists() else model_path
+        model = YOLO(resolved)
         if model is None:
             return None
-        
-        # Optimize for GPU if available
-        device = 'cuda' if torch.cuda.is_available() else 'cpu'
-        if device == 'cuda':
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+        if device == "cuda":
             model = model.to(device)
-            model.half()  # FP16 optimization
-        
+            model.half()
         return model
-        
-    except FileNotFoundError:
-        return None
-    except Exception as e:
+    except Exception:
         return None
 
-def classify_waste_type(detected_items):
-    """Classify detected items into waste categories"""
-    recyclable = set(detected_items) & set(settings.RECYCLABLE)
-    non_recyclable = set(detected_items) & set(settings.NON_RECYCLABLE)
-    hazardous = set(detected_items) & set(settings.HAZARDOUS)
-    return recyclable, non_recyclable, hazardous
 
-def remove_dash_from_class_name(name):
-    """Convert underscores to spaces for display"""
+def classify_waste(items: list) -> tuple[set, set, set]:
+    """Classify detected item names into (recyclable, non_recyclable, hazardous)."""
+    s = set(items)
+    return (
+        s & set(settings.RECYCLABLE),
+        s & set(settings.NON_RECYCLABLE),
+        s & set(settings.HAZARDOUS),
+    )
+
+
+def _display_name(name: str) -> str:
+    """Convert underscore class name to title-case label."""
     return name.replace("_", " ").title()
 
-def assess_object_quality(confidence_score):
-    """Assess object quality based on detection confidence"""
-    if confidence_score >= 0.85:
+
+def _quality_tier(conf: float) -> tuple[str, str]:
+    """Return (label, emoji) for a confidence score."""
+    if conf >= 0.85:
         return "Excellent", "🟢"
-    elif confidence_score >= 0.70:
+    if conf >= 0.70:
         return "Good", "🟡"
-    elif confidence_score >= 0.50:
+    if conf >= 0.50:
         return "Fair", "🟠"
-    else:
-        return "Poor", "🔴"
+    return "Poor", "🔴"
 
 
-def get_recycling_suggestions(detected_items, waste_categories, quality_assessments):
-    """Use Gemini 2.0 Flash to provide comprehensive recycling suggestions"""
-    
-    # Get API key from session state
-    api_key = st.session_state.get('gemini_api_key')
-    
+# ─── Gemini AI ───────────────────────────────────────────
+
+def get_recycling_suggestions(
+    detected_items, waste_categories, quality_assessments
+):
+    """Call Gemini 2.0 Flash for comprehensive recycling guidance."""
+    api_key = st.session_state.get("gemini_api_key")
     if not api_key:
-        return "⚠️ **AI Recommendations Unavailable**\n\nPlease enter your Google Gemini API Key in the sidebar configuration to unlock AI-powered insights."
-
+        return (
+            "⚠️ **AI Recommendations Unavailable**\n\n"
+            "Enter your Google Gemini API key in the sidebar to unlock "
+            "AI-powered recycling insights."
+        )
     if not GEMINI_AVAILABLE:
-        return "⚠️ **AI Library Missing**\n\n`google-generativeai` package is not installed."
-    
-    try:
-        # Configure dynamically
-        genai.configure(api_key=api_key)
-        
-        recyclable, non_recyclable, hazardous = waste_categories
-        
-        items_str = ", ".join([item.replace("_", " ").title() for item in detected_items])
-        recyclable_str = ", ".join([item.replace("_", " ").title() for item in recyclable]) if recyclable else "None detected"
-        non_recyclable_str = ", ".join([item.replace("_", " ").title() for item in non_recyclable]) if non_recyclable else "None detected"
-        hazardous_str = ", ".join([item.replace("_", " ").title() for item in hazardous]) if hazardous else "None detected"
-        
-        quality_info = "\n".join([f"- {item.replace('_', ' ').title()}: {quality}" for item, quality in quality_assessments.items()])
-        
-        comprehensive_prompt = f"""You are an expert waste management and environmental sustainability consultant with extensive knowledge of E-waste recycling and material recovery.
+        return "⚠️ **google-generativeai** package is not installed."
 
-🔍 DETECTED WASTE ANALYSIS:
-Items Detected: {items_str}
+    try:
+        genai.configure(api_key=api_key)
+        recyclable, non_recyclable, hazardous = waste_categories
+
+        fmt = lambda s: ", ".join(_display_name(i) for i in s) or "None"
+        quality_lines = "\n".join(
+            f"- {_display_name(k)}: {v}"
+            for k, v in quality_assessments.items()
+        )
+
+        prompt = f"""You are an expert waste-management and environmental
+sustainability consultant specialising in E-waste recycling
+and material recovery.
+
+🔍 DETECTED ITEMS: {fmt(detected_items)}
 
 📊 QUALITY ASSESSMENT:
-{quality_info}
+{quality_lines}
 
-♻️ WASTE CLASSIFICATION:
-• Recyclable/E-Waste: {recyclable_str}
-• Non-Recyclable: {non_recyclable_str}
-• Hazardous: {hazardous_str}
+♻️ CLASSIFICATION:
+• Recyclable / E-Waste: {fmt(recyclable)}
+• Non-Recyclable:       {fmt(non_recyclable)}
+• Hazardous:            {fmt(hazardous)}
 
-📋 REQUIRED RESPONSE FORMAT:
-
-1️⃣ **ITEM-BY-ITEM ANALYSIS** (Focus on E-waste components if present)
-   - Condition & Reusability
-   - Precious metals recovery potential (Gold, Copper, Palladium) for e-waste
-   - Plastic/Glass grade
-
-2️⃣ **RECYCLING METHODS**
-   - **E-Waste**: Certified e-waste recycler centers, Best Buy/Staples drop-off, etc.
-   - **General**: Curbside vs. Drop-off facility.
-   - Preparation: Data wiping (for storage), Battery removal.
-
-3️⃣ **ENVIRONMENTAL IMPACT**
-   - Toxins prevented (Lead, Mercury, Cadmium)
-   - Carbon footprint reduction
-
-4️⃣ **ACTION PLAN**
-   - Immediate disposal steps
-   - Safety precautions for hazardous items (swollen batteries, broken screens)
+Provide a concise, actionable analysis covering:
+1️⃣ Item-by-item condition & reusability
+2️⃣ Recycling methods (certified centres, preparations)
+3️⃣ Environmental impact (toxins prevented, CO₂ saved)
+4️⃣ Immediate action plan & safety precautions
 
 Format with clear headers and emojis. Be concise but actionable."""
 
-        model = genai.GenerativeModel('gemini-2.0-flash')
-        response = model.generate_content(comprehensive_prompt, stream=False)
-        return response.text
+        model = genai.GenerativeModel("gemini-2.0-flash")
+        resp = model.generate_content(prompt, stream=False)
+        return resp.text
     except Exception as e:
-        error_msg = str(e)
-        return f"""⚠️ **AI Processing Error**
+        return (
+            f"⚠️ **AI Processing Error**\n\nError: {e}\n\n"
+            "**Troubleshooting:**\n"
+            "1. Check if key is valid (starts with 'AIza')\n"
+            "2. Check internet connection\n"
+            "3. Verify Gemini API quota"
+        )
 
-Error: {error_msg}
 
-**Troubleshooting:**
-1. Check if API Key is valid (begins with 'AIza')
-2. Check internet connection
-3. Verify Gemini API quota"""
+# ─── Frame Detection ─────────────────────────────────────
 
-def _display_detected_frames(model, st_frame, info_container, image, confidence_threshold=0.4):
-    """Display detected frames with enhanced detection using latest YOLOv11"""
-    # Resize for optimal processing
-    image_resized = cv2.resize(image, (640, 480))
-    
-    # Run prediction with latest YOLOv11 features
+def _process_frame(model, st_frame, info_box, image, conf_thresh=0.4):
+    """Run detection on one frame and update the Streamlit UI."""
+    img = cv2.resize(image, (640, 480))
+
     results = model.predict(
-        image_resized, 
-        conf=confidence_threshold,
-        iou=0.45,  # Intersection over Union threshold
+        img,
+        conf=conf_thresh,
+        iou=0.45,
         verbose=False,
-        device=0 if torch.cuda.is_available() else 'cpu',
-        half=torch.cuda.is_available()  # Use half precision on GPU
+        device=0 if torch.cuda.is_available() else "cpu",
+        half=torch.cuda.is_available(),
     )
-    
-    names = model.names
 
-    detected = {}
-    confidences = []
-    quality_assessments = {}
-    
-    # Extract detections with confidence scores and quality
+    names = model.names
+    detected: dict[str, list[float]] = {}
+    quality_map: dict[str, str] = {}
+
     for r in results:
         for i, c in enumerate(r.boxes.cls):
-            class_name = names[int(c)]
-            confidence = float(r.boxes.conf[i])
-            
-            if class_name not in detected:
-                detected[class_name] = []
-            detected[class_name].append(confidence)
-            confidences.append(confidence)
-            
-            # Assess quality
-            quality, emoji = assess_object_quality(confidence)
-            quality_assessments[class_name] = f"{emoji} {quality} ({confidence:.1%})"
+            cls = names[int(c)]
+            conf = float(r.boxes.conf[i])
+            detected.setdefault(cls, []).append(conf)
+            label, emoji = _quality_tier(conf)
+            quality_map[cls] = f"{emoji} {label} ({conf:.0%})"
 
-    detected_items = list(detected.keys())
-    waste_categories = classify_waste_type(detected_items)
-    recyclable, non_recyclable, hazardous = waste_categories
+    items = list(detected)
+    recyclable, non_recyclable, hazardous = classify_waste(items)
 
-    # Display results with enhanced UI
-    with info_container:
-        if detected_items:
-            col1, col2, col3 = st.columns(3)
-            
-            with col1:
-                if recyclable:
-                    st.success(f"♻️ Recyclable ({len(recyclable)})")
-                    for item in recyclable:
-                        avg_conf = sum(detected[item]) / len(detected[item])
-                        quality, emoji = assess_object_quality(avg_conf)
-                        st.write(f"  {emoji} {remove_dash_from_class_name(item)}")
-                        st.caption(f"Confidence: {avg_conf:.1%} | Quality: {quality}")
-            
-            with col2:
-                if non_recyclable:
-                    st.warning(f"⚠️ Non-Recyclable ({len(non_recyclable)})")
-                    for item in non_recyclable:
-                        avg_conf = sum(detected[item]) / len(detected[item])
-                        quality, emoji = assess_object_quality(avg_conf)
-                        st.write(f"  {emoji} {remove_dash_from_class_name(item)}")
-                        st.caption(f"Confidence: {avg_conf:.1%} | Quality: {quality}")
-            
-            with col3:
-                if hazardous:
-                    st.error(f"🚨 Hazardous ({len(hazardous)})")
-                    for item in hazardous:
-                        avg_conf = sum(detected[item]) / len(detected[item])
-                        quality, emoji = assess_object_quality(avg_conf)
-                        st.write(f"  {emoji} {remove_dash_from_class_name(item)}")
-                        st.caption(f"Confidence: {avg_conf:.1%} | Quality: {quality}")
-            
+    # ── Info panel ────────────────────────────────────────
+    with info_box:
+        if items:
+            cols = st.columns(3)
+            _show_category(cols[0], "♻️ Recyclable", recyclable, detected, "success")
+            _show_category(cols[1], "⚠️ Non-Recyclable", non_recyclable, detected, "warning")
+            _show_category(cols[2], "🚨 Hazardous", hazardous, detected, "error")
+
             st.divider()
-            
-            # AI Recycling Suggestions
             st.subheader("🤖 AI-Powered Recycling Guidance")
-            with st.spinner("Generating personalized recommendations..."):
-                suggestions = get_recycling_suggestions(detected_items, waste_categories, quality_assessments)
+            with st.spinner("Generating recommendations…"):
+                suggestions = get_recycling_suggestions(
+                    items,
+                    (recyclable, non_recyclable, hazardous),
+                    quality_map,
+                )
                 st.markdown(suggestions)
         else:
-            st.info("No waste items detected. Point camera at waste to begin detection.")
+            st.info("No waste items detected — point camera at waste to begin.")
 
-    # Display annotated frame with high quality
-    annotated_frame = results[0].plot()
-    st_frame.image(annotated_frame, channels="BGR", use_column_width=True)
+    # ── Annotated frame ──────────────────────────────────
+    st_frame.image(results[0].plot(), channels="BGR", use_container_width=True)
 
+
+def _show_category(col, title, item_set, detected, style):
+    """Render a single waste-category column."""
+    if not item_set:
+        return
+    with col:
+        getattr(st, style)(f"{title} ({len(item_set)})")
+        for item in item_set:
+            avg = sum(detected[item]) / len(detected[item])
+            label, emoji = _quality_tier(avg)
+            st.write(f"  {emoji} {_display_name(item)}")
+            st.caption(f"Confidence: {avg:.0%} · Quality: {label}")
+
+
+# ─── Webcam Loop ─────────────────────────────────────────
 
 def play_webcam(model):
-    """Run webcam detection with real-time processing using latest YOLOv11"""
-    
+    """Main webcam detection loop."""
     st.subheader("📹 Live Waste Detection")
-    
-    # Use toggle for better control
-    run_detection = st.toggle("🔴 Enable Camera", help="Toggle to start/stop live detection")
-    
-    # Placeholders for UI elements
-    frame_placeholder = st.empty()
-    metrics_placeholder = st.container()
-    
-    if run_detection:
-        cap = cv2.VideoCapture(settings.WEBCAM_PATH)
-        
-        if not cap.isOpened():
-            st.error("❌ Cannot access webcam. Please check permissions and try again.")
-            return
-        
-        # Set camera properties for better quality
-        cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
-        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
-        cap.set(cv2.CAP_PROP_FPS, 30)
-        
-        frame_count = 0
-        start_time = time.time()
-        all_detected_items = set()
-        all_quality_assessments = {}
-        all_waste_categories = (set(), set(), set())
-        
-        stop_button = st.button("⏹️ Stop & Save Log")
-        
-        try:
-            while cap.isOpened() and not stop_button:
-                ret, img = cap.read()
-                if not ret:
-                    st.warning("Failed to read frame from webcam")
-                    break
-                
-                # Get confidence from session state if available
-                confidence = st.session_state.get('confidence', 0.4)
-                
-                # Process frame with latest YOLOv11
-                _display_detected_frames(model, frame_placeholder, metrics_placeholder, img, confidence_threshold=confidence)
-                frame_count += 1
-                
-                # Collect stats for logging
-                # Note: We are not capturing every single frame's items to avoid massive memory usage, 
-                # but we could improve this by aggregating. 
-                # For now, we rely on the session logging at the end.
-                
-                # Minimal delay for smooth real-time processing
-                time.sleep(0.001)
-                
-        except Exception as e:
-            st.error(f"❌ Error during detection: {str(e)}")
-        finally:
-            cap.release()
-            processing_time = time.time() - start_time
-            
-            # Log the session if valid
-            if frame_count > 0:
-                model_name = st.session_state.get('model_name', 'yolov11')
-                # We need to capture the *last* known state or aggregate. 
-                # Ideally, we should update `all_detected_items` inside the loop.
-                # Since `_display_detected_frames` handles display, we might miss capturing items for logging 
-                # unless we modify it to return values. 
-                # For now, we accept that logging might be limited to the last session or needs refactoring.
-                # A quick fix: We will log the *Detected Items* from the *last frame* if we didn't track them all.
-                # But to start simple:
-                pass 
-                
-            st.info(f"✅ Detection stopped. Processed {frame_count} frames in {processing_time:.2f}s ({frame_count/processing_time:.1f} FPS)")
-            
-            # If user clicked Stop button, we manually turn off the toggle by rerunning
-            if stop_button:
-                st.rerun()
 
-    else:
+    run = st.toggle("🔴 Enable Camera", help="Toggle to start/stop detection")
+    frame_area = st.empty()
+    info_area  = st.container()
+
+    if not run:
         st.info("👆 Toggle the switch above to start the camera.")
-        st.image("https://cdn-icons-png.flaticon.com/512/3178/3178158.png", width=100)
+        return
 
+    cap = cv2.VideoCapture(settings.WEBCAM_INDEX)
+    if not cap.isOpened():
+        st.error("❌ Cannot access webcam — check permissions and retry.")
+        return
+
+    cap.set(cv2.CAP_PROP_FRAME_WIDTH,  1280)
+    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
+    cap.set(cv2.CAP_PROP_FPS, 30)
+
+    frames = 0
+    t0 = time.time()
+    stop = st.button("⏹️ Stop & Save Log")
+
+    try:
+        while cap.isOpened() and not stop:
+            ok, img = cap.read()
+            if not ok:
+                st.warning("Lost webcam feed.")
+                break
+            conf = st.session_state.get("confidence", 0.4)
+            _process_frame(model, frame_area, info_area, img, conf)
+            frames += 1
+            time.sleep(0.001)
+    except Exception as e:
+        st.error(f"❌ Detection error: {e}")
+    finally:
+        cap.release()
+        elapsed = time.time() - t0
+        if frames:
+            fps = frames / elapsed
+            st.info(
+                f"✅ Stopped — {frames} frames in {elapsed:.1f}s "
+                f"({fps:.1f} FPS)"
+            )
+        if stop:
+            st.rerun()
