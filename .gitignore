@@ -1,5 +1,7 @@
 *.pyc
-.DS_Storevenv/
+.DS_Store
+venv/
+venv_broken/
 __pycache__/
 *.pt
 *.onnx

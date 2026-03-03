@@ -29,21 +29,32 @@ st.markdown("""
 st.sidebar.title("⚙️ Detection Console")
 st.sidebar.markdown("---")
 
-# Model selection with latest YOLOv11 versions
+
+# Model selection - Default to Best trained model
 model_type = st.sidebar.radio(
-    "Select Model Quality",
-    ["Fast (Nano)", "Balanced (Small)", "Accurate (Medium)"],
-    help="Higher quality = slower but more accurate detection"
+    "Select Model",
+    ["🏆 Custom Trained (Best)", "Fast (Nano)", "Balanced (Small)", "Accurate (Medium)"],
+    index=0,
+    help="🏆 Best = Custom trained on E-waste dataset | Others = Pre-trained YOLOv11 (General)"
 )
 
 model_map = {
+    "🏆 Custom Trained (Best)": "weights/best.pt",
     "Fast (Nano)": "yolov11n.pt",
     "Balanced (Small)": "yolov11s.pt",
     "Accurate (Medium)": "yolov11m.pt"
 }
 
+# Get the selected model file name
 selected_model = model_map[model_type]
-model_path = Path(settings.MODEL_DIR) / selected_model
+
+# Determine the full model path
+if selected_model.startswith("weights/"):
+    # Local best.pt file
+    model_path = Path(settings.MODEL_DIR) / selected_model.replace("weights/", "")
+else:
+    # Pre-trained models: Just use the filename, let YOLO handle download
+    model_path = selected_model
 
 st.title("♻️ Intelligent Waste Segregation System")
 st.markdown("""
@@ -53,7 +64,7 @@ st.markdown("""
     and provides AI-powered recycling suggestions using Google Gemini 2.0 Flash.
     
     ✨ Features:
-    - Real-time waste detection with 90%+ accuracy
+    - Real-time E-waste & General waste detection
     - Object quality assessment
     - AI-powered recycling recommendations
     - Environmental impact analysis
@@ -61,27 +72,61 @@ st.markdown("""
 
 st.markdown("---")
 
+# API Key Configuration
+# API Key Configuration
+st.sidebar.markdown("---")
+with st.sidebar.expander("🔑 API Configuration", expanded=False):
+    # Default API Key from settings
+    default_api_key = getattr(settings, 'GEMINI_API_KEY', '')
+    
+    # Store in session state if not already set
+    if 'gemini_api_key' not in st.session_state:
+        st.session_state['gemini_api_key'] = default_api_key
+
+    # Input field to override
+    api_key_input = st.text_input(
+        "Gemini API Key", 
+        value=st.session_state['gemini_api_key'], 
+        type="password", 
+        help="Get key from aistudio.google.com"
+    )
+
+    if api_key_input:
+        st.session_state['gemini_api_key'] = api_key_input
+        st.success("✅ Configured")
+    else:
+        st.warning("⚠️ No API Key provided.")
+
 # Model loading with error handling
 model = None
 
-if model_path.exists():
+@st.cache_resource
+def load_yolo_model(model_path_str):
+    """Load YOLO model and cache it"""
     try:
-        with st.spinner(f"Loading {model_type} model..."):
-            model = helper.load_model(str(model_path))
-        st.sidebar.success(f"✅ {model_type} model loaded successfully")
+        return helper.load_model(model_path_str)
     except Exception as e:
-        st.sidebar.error(f"❌ Model loading failed: {str(e)}")
+        return None
+
+with st.spinner(f"⏳ Loading {model_type}..."):
+    model = load_yolo_model(str(model_path))
+
+if model is not None:
+    st.sidebar.success(f"✅ {model_type} loaded successfully")
 else:
-    st.sidebar.warning(f"⚠️ Model file not found: {selected_model}")
-    st.sidebar.info("Downloading latest model... This may take a moment.")
-    try:
-        with st.spinner("Downloading latest YOLOv11 model..."):
-            model = helper.load_model(selected_model)
-            model_path.parent.mkdir(parents=True, exist_ok=True)
-            model.save(str(model_path))
-        st.sidebar.success(f"✅ {model_type} model downloaded and loaded")
-    except Exception as e:
-        st.sidebar.error(f"❌ Failed to download model: {str(e)}")
+    st.sidebar.error("❌ Model loading failed")
+    with st.error("⚠️ Model Failed to Load"):
+        st.markdown(f"""
+**Possible causes**:
+- File not found or download failed: {model_path}
+- Internet connection needed for first-time download
+- Corrupted model file
+
+**Solutions**:
+1. **For 🏆 Custom Trained Model**: Verify `weights/best.pt` exists.
+2. **For Pre-trained Models**: Check internet connection.
+3. Refresh browser: F5
+        """)
 
 # Confidence threshold slider
 st.sidebar.markdown("---")
@@ -91,7 +136,7 @@ confidence = st.sidebar.slider(
     max_value=0.9,
     value=0.4,
     step=0.05,
-    help="Lower = more detections (may include false positives) | Higher = fewer but more accurate detections"
+    help="Lower = more detections | Higher = fewer but more accurate detections"
 )
 
 # Store in session state for helper.py access
@@ -99,30 +144,14 @@ st.session_state.confidence = confidence
 
 st.sidebar.markdown("---")
 
-# API Key setup for Gemini 2.0 Flash
-st.sidebar.subheader("🔑 API Configuration")
-api_key = st.sidebar.text_input(
-    "Google Gemini API Key",
-    type="password",
-    help="Get your free API key from https://makersuite.google.com/app/apikey"
-)
-
-if api_key:
-    os.environ["GOOGLE_API_KEY"] = api_key
-    st.sidebar.success("✅ Gemini API configured")
-else:
-    st.sidebar.warning("⚠️ Add API key for AI recommendations")
-
-st.sidebar.markdown("---")
-
 # Waste categories info
 with st.sidebar.expander("📋 Waste Categories"):
     st.write("**♻️ Recyclable:**")
-    st.write(", ".join(settings.RECYCLABLE))
+    st.write("Paper, Plastic, Metal, Glass, E-waste Components")
     st.write("\n**⚠️ Non-Recyclable:**")
-    st.write(", ".join(settings.NON_RECYCLABLE))
+    st.write("Organic, Styrofoam, Contaminated items")
     st.write("\n**🚨 Hazardous:**")
-    st.write(", ".join(settings.HAZARDOUS))
+    st.write("Batteries, Chemicals, Medical Waste")
 
 st.sidebar.markdown("---")
 
@@ -132,6 +161,10 @@ with st.sidebar.expander("ℹ️ System Info"):
     st.write(f"**PyTorch Version:** {torch.__version__}")
     st.write(f"**CUDA Available:** {'Yes ✅' if torch.cuda.is_available() else 'No (CPU Mode)'}")
     st.write(f"**YOLOv11 Model:** {selected_model}")
+    if st.session_state.get('gemini_api_key'):
+        st.write(f"**Gemini 2.0 Flash:** ✅ Configured")
+    else:
+        st.write(f"**Gemini 2.0 Flash:** ⚠️ Not Configured")
 
 # Store model name in session state for logging
 st.session_state.model_name = selected_model
@@ -147,7 +180,7 @@ with st.sidebar.expander("📊 Detection History"):
     if history:
         st.subheader("Recent Sessions")
         for session in history[-5:]:  # Show last 5 sessions
-            with st.container(border=True):
+            with st.container():
                 st.caption(f"🕐 {session['timestamp'][:19]}")
                 st.write(f"**Model:** {session['model']}")
                 st.write(f"**Frames:** {session['frames_processed']} | **FPS:** {session['avg_fps']:.1f}")
@@ -236,12 +269,7 @@ if model is not None:
         
         st.markdown("---")
     
-    col1, col2 = st.columns([3, 1])
-    with col1:
-        st.subheader("📹 Live Waste Detection")
-    with col2:
-        st.metric("Confidence", f"{confidence:.0%}")
-    
+    # Live Detection Section
     helper.play_webcam(model)
 else:
     st.error("❌ Detection disabled. Please configure the model properly.")
