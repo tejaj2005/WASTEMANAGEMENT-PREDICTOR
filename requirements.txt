@@ -14,4 +14,5 @@ tqdm
 matplotlib
 scipy
 pandas
+plotly
 python-dotenv
