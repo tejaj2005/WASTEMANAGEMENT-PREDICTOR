@@ -1,0 +1,130 @@
+# AI E-Waste Detection System — YOLO Dataset Configuration
+# 100 Classes · 10 Categories · Target: 95–99% mAP@50
+
+path: dataset          # root path relative to this file
+train: images/train    # 70% — 35,000–70,000 images
+val:   images/val      # 20% — 10,000–20,000 images
+test:  images/test     # 10% —  5,000–10,000 images
+
+nc: 100               # number of classes
+
+names:
+  # ── Category 1: Mobile Devices (0–9) ──────────────────
+  0: Smartphone
+  1: Feature Phone
+  2: Tablet
+  3: Smartwatch
+  4: Fitness Band
+  5: Mobile Battery
+  6: Mobile Back Cover
+  7: Mobile Screen
+  8: Mobile Motherboard
+  9: SIM Card Tray
+
+  # ── Category 2: Computing Devices (10–19) ──────────────
+  10: Laptop
+  11: Desktop Computer
+  12: Monitor
+  13: All-in-One Computer
+  14: Mini PC
+  15: Server Unit
+  16: Thin Client
+  17: Computer Cabinet
+  18: Laptop Charger
+  19: Laptop Cooling Pad
+
+  # ── Category 3: Computer Peripherals (20–29) ───────────
+  20: Keyboard
+  21: Mouse
+  22: Gaming Mouse
+  23: Mechanical Keyboard
+  24: Webcam
+  25: Microphone
+  26: Computer Speaker
+  27: External Webcam
+  28: Graphics Tablet
+  29: Barcode Scanner
+
+  # ── Category 4: Storage Devices (30–39) ────────────────
+  30: Hard Disk Drive
+  31: Solid State Drive
+  32: External Hard Disk
+  33: USB Flash Drive
+  34: Memory Card
+  35: Micro SD Card
+  36: CD Disk
+  37: DVD Disk
+  38: Floppy Disk
+  39: NAS Storage Unit
+
+  # ── Category 5: Computer Components (40–49) ────────────
+  40: Motherboard
+  41: CPU Processor
+  42: GPU
+  43: RAM Module
+  44: Power Supply Unit
+  45: Cooling Fan
+  46: Heat Sink
+  47: CMOS Battery
+  48: Expansion Card
+  49: Network Card
+
+  # ── Category 6: Circuit Components (50–59) ─────────────
+  50: PCB Board
+  51: Integrated Circuit
+  52: Capacitor
+  53: Resistor
+  54: Transistor
+  55: Inductor
+  56: Diode
+  57: Voltage Regulator
+  58: Crystal Oscillator
+  59: Relay
+
+  # ── Category 7: Display Devices (60–69) ────────────────
+  60: LCD Panel
+  61: LED Panel
+  62: CRT Monitor
+  63: Television
+  64: Smart TV
+  65: Projector
+  66: Projector Lens
+  67: Display Controller Board
+  68: TV Remote
+  69: LED Driver Board
+
+  # ── Category 8: Audio Devices (70–79) ──────────────────
+  70: Headphones
+  71: Earphones
+  72: Bluetooth Headset
+  73: Wireless Earbuds
+  74: Soundbar
+  75: Subwoofer
+  76: Amplifier
+  77: Audio Receiver
+  78: Microphone
+  79: DJ Controller
+
+  # ── Category 9: Networking Devices (80–89) ─────────────
+  80: WiFi Router
+  81: Network Switch
+  82: Modem
+  83: LAN Cable
+  84: Ethernet Connector
+  85: Network Antenna
+  86: Access Point
+  87: Signal Booster
+  88: Fiber Converter
+  89: Network Hub
+
+  # ── Category 10: Power Devices (90–99) ─────────────────
+  90: Battery
+  91: Lithium Battery
+  92: Power Adapter
+  93: Charger
+  94: UPS
+  95: Inverter
+  96: Power Bank
+  97: Extension Board
+  98: Power Cable
+  99: Adapter Plug
