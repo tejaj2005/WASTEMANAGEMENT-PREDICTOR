@@ -136,20 +136,41 @@ def log_detection_session(
 # ─── Model ────────────────────────────────────────────────
 
 def load_model(model_path: str):
-    """Load YOLO model with GPU optimization."""
-    try:
-        p = Path(model_path)
-        resolved = str(p.resolve()) if p.exists() else model_path
-        model = YOLO(resolved)
-        if model is None:
-            return None
-        device = "cuda" if torch.cuda.is_available() else "cpu"
-        if device == "cuda":
-            model = model.to(device)
-            model.half()
-        return model
-    except Exception:
-        return None
+    """Load YOLO model with GPU optimization.
+    Falls back to YOLOv8 equivalent if YOLO11 auto-download fails.
+    """
+    import ultralytics
+
+    # Build fallback list: try exact name first, then yolov8 equivalent
+    candidates = [model_path]
+    name = Path(model_path).name  # e.g. "yolo11n.pt"
+    if name.startswith("yolo11"):
+        # yolo11n → yolov8n, yolo11s → yolov8s, etc.
+        fb = "yolov8" + name.replace("yolo11", "")
+        candidates.append(fb)
+
+    last_err = None
+    for candidate in candidates:
+        try:
+            p = Path(candidate)
+            resolved = str(p.resolve()) if p.exists() else candidate
+            model = YOLO(resolved)
+            if model is None:
+                continue
+            device = "cuda" if torch.cuda.is_available() else "cpu"
+            if device == "cuda":
+                model = model.to(device)
+                model.half()
+            return model
+        except Exception as exc:
+            last_err = exc
+            continue
+
+    # All candidates failed — print helpful info to stderr/log
+    print(f"[helper.load_model] All candidates failed for '{model_path}': {last_err}")
+    print(f"[helper.load_model] Ultralytics version: {ultralytics.__version__}")
+    return None
+
 
 
 # ─── Classification ───────────────────────────────────────
