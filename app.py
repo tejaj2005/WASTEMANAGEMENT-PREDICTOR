@@ -148,19 +148,50 @@ with st.sidebar.expander("🗃️ E-Waste Subcategories"):
         st.caption(f"{meta['weee_cat']} · {meta['hazard_level']}")
 
 # ─── Load Model ───────────────────────────────────────────
+# Keyed by path so switching models loads fresh (no cross-model cache)
 @st.cache_resource(show_spinner=False)
 def _load(p: str):
     return helper.load_model(p)
 
-with st.spinner(f"⏳ Loading {model_type}…"):
+
+with st.spinner(f"⏳ Loading **{model_type}**…"):
     model = _load(selected_model)
 
 if model is not None:
-    st.sidebar.success(f"✅ {model_type.split('—')[-1].strip()} ready")
+    lbl = model_type.split("—")[-1].strip() if "—" in model_type else model_type
+    st.sidebar.success(f"✅ {lbl} loaded")
 else:
     st.sidebar.error("❌ Model failed to load")
-    st.error(f"**Cannot load:** `{selected_model}`  —  ensure `weights/best.pt` exists or internet for auto-download.")
+    is_custom = "best.pt" in selected_model
+    if is_custom:
+        st.error("""
+**❌ Custom model not found:** `weights/best.pt`
+
+This file is **not included in the repository** (too large for Git). You need to add it:
+- Place your trained model at: `waste-detection/weights/best.pt`
+- Or switch to **Nano / Small / Medium** from the sidebar (auto-downloaded)
+""")
+    else:
+        mf = Path(selected_model).name
+        st.error(f"""
+**❌ Cannot load model:** `{mf}`
+
+| Cause | Fix |
+|-------|-----|
+| No internet | Connect to internet — model downloads automatically on first run |
+| Firewall blocking | Whitelist `github.com`, `ultralytics.com` |
+| Ultralytics too old | Run: `pip install -U ultralytics` then reload |
+| Disk full | Free disk space in `C:\\Users\\Teja\\.cache\\ultralytics` |
+
+**Quick fix:** Select **🏆 Custom Trained (Best)** if you have `weights/best.pt`, or try another model variant.
+""")
+    col_retry, col_tip = st.columns(2)
+    if col_retry.button("🔄 Clear Cache & Retry", use_container_width=True, type="primary"):
+        st.cache_resource.clear()
+        st.rerun()
+    col_tip.info("💡 Tip: Nano/Small/Medium need internet on first use only — cached after.")
     st.stop()
+
 
 # ─── Header ───────────────────────────────────────────────
 h_col, badge_col = st.columns([5, 1])
