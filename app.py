@@ -97,17 +97,37 @@ PALETTE = ["#00C896","#4FC3F7","#FFB84D","#FF4B6E",
 st.sidebar.title("⚙️ Detection Console")
 st.sidebar.markdown("---")
 
+def _resolve_model(preferred: str, fallback: str) -> str:
+    """Return preferred if it exists and is large enough (valid), else fallback."""
+    from pathlib import Path as _P
+    p = _P(preferred)
+    MIN_BYTES = 1_000_000  # 1 MB — corrupt/partial files are smaller
+    if p.exists() and p.stat().st_size >= MIN_BYTES:
+        return preferred
+    # Also check fallback exists
+    f = _P(fallback)
+    if f.exists() and f.stat().st_size >= MIN_BYTES:
+        return fallback
+    # Neither local — return preferred name (will trigger auto-download)
+    return preferred
+
+
 _MODEL_MAP = {
     "🏆 Custom Trained (Best)": str(settings.BEST_MODEL),
-    "⚡ Fast — Nano":            "yolo11n.pt",
-    "⚖️ Balanced — Small":      "yolo11s.pt",
-    "🎯 Accurate — Medium":     "yolo11m.pt",
+    "⚡ Fast — Nano":           _resolve_model("yolo11n.pt",  "yolov8n.pt"),
+    "⚖️ Balanced — Small":     _resolve_model("yolo11s.pt",  "yolov8s.pt"),
+    "🎯 Accurate — Medium":    _resolve_model("yolo11m.pt",  "yolov8m.pt"),
 }
+
 model_type = st.sidebar.radio(
     "Detection Model", list(_MODEL_MAP.keys()), index=0,
-    help="🏆 Best = custom-trained e-waste model · Others = YOLO11 general (auto-download)"
+    help="🏆 Best = custom-trained e-waste model · Others = YOLO11/v8 general detection"
 )
 selected_model = _MODEL_MAP[model_type]
+# Show which actual file will be used
+_mf = Path(selected_model).name
+st.sidebar.caption(f"📦 Using: `{_mf}`")
+
 
 st.sidebar.markdown("---")
 confidence = st.sidebar.slider(
